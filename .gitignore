@@ -1,0 +1,30 @@
+# Python caches
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments
+.venv/
+.env
+.env.*
+
+# Packaging
+build/
+dist/
+*.egg-info/
+
+# Editor settings
+.vscode/
+.idea/
+*.swp
+
+# Bytecode / coverage / test
+.coverage
+htmlcov/
+.pytest_cache/
+
+# Logs
+*.log
+
+# Local config overrides
+.env.local
