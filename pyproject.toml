@@ -1,7 +1,7 @@
 [tool.poetry]
 name = "ai-briefing-bot"
 version = "0.1.0"
-description = "AI briefing bot MVP with YouTube poller"
+description = "AI briefing bot MVP with webhook-driven YouTube summaries"
 authors = ["Your Name <you@example.com>"]
 readme = "README.md"
 packages = [{ include = "app" }]

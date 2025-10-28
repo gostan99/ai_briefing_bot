@@ -1,7 +1,5 @@
 from functools import lru_cache
-from typing import Annotated
 
-from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -10,20 +8,15 @@ class Settings(BaseSettings):
 
     database_url: str = "postgresql+asyncpg://postgres:postgres@localhost:5432/briefing"
     youtube_api_key: str | None = None
-    watch_channels: Annotated[list[str], Field(default_factory=list)]
-    poll_interval_minutes: int = 15
+    transcript_max_retry: int = 6
+    transcript_backoff_minutes: int = 5
+    summary_max_retry: int = 5
+    notify_max_retry: int = 5
+    email_smtp_url: str | None = None
+    email_from: str | None = None
+    webhook_secret: str | None = None
 
     model_config = SettingsConfigDict(env_file=".env", env_prefix="APP_", env_file_encoding="utf-8")
-
-    @field_validator("watch_channels", mode="before")
-    @classmethod
-    def split_channels(cls, value: str | list[str] | None) -> list[str]:
-        if value is None:
-            return []
-        if isinstance(value, list):
-            return value
-        return [item.strip() for item in value.split(",") if item.strip()]
-
 
 @lru_cache
 
