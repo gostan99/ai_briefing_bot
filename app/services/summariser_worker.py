@@ -14,7 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.core.config import settings
-from app.db.models import Summary, Video
+from app.db.models import NotificationJob, SubscriberChannel, Summary, Video
 from app.db.session import SessionLocal
 
 logger = logging.getLogger(__name__)
@@ -138,7 +138,46 @@ async def process_pending_summaries(
         updated.append(summary)
 
     await session.flush()
+    await _queue_notification_jobs(session, [video for video in videos if video.summary])
     return updated
+
+
+async def _queue_notification_jobs(session: AsyncSession, videos: list[Video]) -> None:
+    """Create notification jobs for summaries that are ready."""
+
+    for video in videos:
+        summary = video.summary
+        if summary is None or summary.summary_status != "ready":
+            continue
+
+        subscriber_ids = (
+            await session.execute(
+                select(SubscriberChannel.subscriber_id).where(
+                    SubscriberChannel.channel_id == video.channel_id
+                )
+            )
+        ).scalars().all()
+
+        for subscriber_id in subscriber_ids:
+            exists = await session.scalar(
+                select(NotificationJob).where(
+                    NotificationJob.video_id == video.id,
+                    NotificationJob.subscriber_id == subscriber_id,
+                )
+            )
+            if exists:
+                continue
+
+            job = NotificationJob(
+                video_id=video.id,
+                subscriber_id=subscriber_id,
+                status="pending",
+                retry_count=0,
+                next_retry_at=datetime.now(timezone.utc),
+            )
+            session.add(job)
+
+    await session.flush()
 
 
 class SummariserWorker:
@@ -199,4 +238,3 @@ async def stop_summariser_worker() -> None:
     """Public entry for FastAPI shutdown."""
 
     await summariser_worker.stop()
-

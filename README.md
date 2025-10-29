@@ -1,6 +1,6 @@
 # AI Briefing Bot (Event-Driven MVP)
 
-Early scaffold for a briefing bot that reacts to YouTube uploads, collects transcripts, generates AI-powered summaries, and emails the highlights. The current codebase contains the shared plumbing (env config, Postgres models) while the webhook-driven pipeline is captured in `docs/architecture.md`.
+A briefing bot that reacts to YouTube uploads, collects transcripts, generates AI-powered summaries, and emails the highlights. The current codebase contains the shared plumbing (env config, Postgres models) while the webhook-driven pipeline is captured in `docs/architecture.md`.
 
 ## Components
 
