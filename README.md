@@ -16,5 +16,6 @@ Early scaffold for a briefing bot that reacts to YouTube uploads, collects trans
 1. Copy `.env.example` to `.env` and update database credentials plus any API/email keys.
 2. Install dependencies with `poetry install` (or `uv sync`).
 3. Create the schema via `python -m app.db.init_db`.
+4. Launch the API locally with `uvicorn app.main:app --reload` to expose `POST /subscriptions` and `/healthz`.
 
 Docker Compose, subscription/webhook handlers, and workers will be added as the event-driven pipeline solidifies. See `docs/architecture.md` for the detailed flow and retry strategy.

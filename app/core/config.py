@@ -15,6 +15,7 @@ class Settings(BaseSettings):
     email_smtp_url: str | None = None
     email_from: str | None = None
     webhook_secret: str | None = None
+    webhook_callback_url: str = "http://localhost:8000/webhooks/youtube"
 
     model_config = SettingsConfigDict(env_file=".env", env_prefix="APP_", env_file_encoding="utf-8")
 

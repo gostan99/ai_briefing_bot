@@ -97,6 +97,7 @@ Reacts to YouTube upload notifications, a webhook stores new uploads, a worker w
 - `APP_SUMMARY_MAX_RETRY` (default 5).
 - `APP_EMAIL_SMTP_URL`, `APP_EMAIL_FROM`, `APP_EMAIL_TO`.
 - `APP_WEBHOOK_SECRET` for validating requests (optional but recommended behind a proxy).
+- `APP_WEBHOOK_CALLBACK_URL` public URL where YouTube will POST notifications.
 
 ## Worker Implementation Notes
 - Use FastAPI startup event to spawn async loops, or split into separate processes (API + worker) coordinated via Docker Compose.
