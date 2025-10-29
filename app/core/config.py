@@ -8,6 +8,10 @@ class Settings(BaseSettings):
 
     database_url: str = "postgresql+asyncpg://postgres:postgres@localhost:5432/briefing"
     youtube_api_key: str | None = None
+    openai_api_key: str | None = None
+    openai_model: str = "gpt-4o-mini"
+    openai_max_chars: int = 12000
+    openai_base_url: str | None = None
     transcript_max_retry: int = 6
     transcript_backoff_minutes: int = 5
     transcript_max_concurrency: int = 2

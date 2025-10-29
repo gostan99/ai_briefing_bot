@@ -4,8 +4,6 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import re
-from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Callable
 
@@ -16,46 +14,13 @@ from sqlalchemy.orm import selectinload
 from app.core.config import settings
 from app.db.models import NotificationJob, SubscriberChannel, Summary, Video
 from app.db.session import SessionLocal
+from app.services.summariser_utils import (
+    SummaryResult,
+    generate_summary_from_transcript,
+    generate_summary_via_openai,
+)
 
 logger = logging.getLogger(__name__)
-
-
-@dataclass(slots=True)
-class SummaryResult:
-    """Represents an LLM-style summary of a transcript."""
-
-    tl_dr: str
-    highlights: list[str]
-    key_quote: str | None
-
-
-def _split_sentences(text: str) -> list[str]:
-    """Naively split text into sentences."""
-
-    text = text.strip()
-    if not text:
-        return []
-    sentences = re.split(r"(?<=[.!?])\s+", text)
-    return [sentence.strip() for sentence in sentences if sentence.strip()]
-
-
-def generate_summary_from_transcript(transcript: str) -> SummaryResult:
-    """Generate a simple summary using heuristic rules."""
-
-    sentences = _split_sentences(transcript)
-    if not sentences:
-        raise ValueError("Transcript is empty")
-
-    tl_dr = " ".join(sentences[:2]) if len(sentences) > 1 else sentences[0]
-
-    highlights: list[str] = []
-    for sentence in sentences:
-        if len(highlights) >= 4:
-            break
-        highlights.append(sentence)
-
-    key_quote = max(sentences, key=len)
-    return SummaryResult(tl_dr=tl_dr, highlights=highlights, key_quote=key_quote)
 
 
 def _ensure_summary_record(session: AsyncSession, video: Video) -> Summary:
@@ -95,11 +60,17 @@ def _apply_summary_failure(summary: Summary, error: Exception) -> None:
         summary.summary_status = "pending"
 
 
+def _select_generator() -> Callable[[str], SummaryResult]:
+    if settings.openai_api_key:
+        return generate_summary_via_openai
+    return generate_summary_from_transcript
+
+
 async def process_pending_summaries(
     session: AsyncSession,
     *,
     batch_size: int = 5,
-    generator: Callable[[str], SummaryResult] = generate_summary_from_transcript,
+    generator: Callable[[str], SummaryResult] | None = None,
 ) -> list[Summary]:
     """Process videos with ready transcripts but missing summaries."""
 
@@ -128,12 +99,32 @@ async def process_pending_summaries(
             updated.append(summary)
             continue
 
+        chosen_generator = generator or _select_generator()
+
         try:
-            result = generator(video.transcript_text)
+            result = chosen_generator(video.transcript_text)
             _apply_summary_success(video, summary, result)
-        except Exception as exc:  # pragma: no cover - defensive guard
-            logger.exception("Summary generation failed", extra={"video_id": video.youtube_id})
-            _apply_summary_failure(summary, exc)
+        except Exception as exc:
+            if generator is None and chosen_generator is generate_summary_via_openai:
+                logger.exception(
+                    "LLM summary failed, falling back to heuristic",
+                    extra={"video_id": video.youtube_id},
+                )
+                try:
+                    result = generate_summary_from_transcript(video.transcript_text)
+                    _apply_summary_success(video, summary, result)
+                except Exception as fallback_exc:  # pragma: no cover - defensive guard
+                    logger.exception(
+                        "Fallback summary generation failed",
+                        extra={"video_id": video.youtube_id},
+                    )
+                    _apply_summary_failure(summary, fallback_exc)
+            else:
+                logger.exception(
+                    "Summary generation failed",
+                    extra={"video_id": video.youtube_id},
+                )
+                _apply_summary_failure(summary, exc)
 
         updated.append(summary)
 
@@ -238,3 +229,4 @@ async def stop_summariser_worker() -> None:
     """Public entry for FastAPI shutdown."""
 
     await summariser_worker.stop()
+

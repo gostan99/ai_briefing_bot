@@ -18,6 +18,19 @@ A briefing bot that reacts to YouTube uploads, collects transcripts, generates A
 3. Create the schema via `uv run -- python -m app.db.init_db`.
 4. Launch the API locally with `uv run -- uvicorn app.main:app --reload --port 8000` to expose `POST /subscriptions` and `/healthz`.
 
+### Optional: Enable LLM summaries (OpenAI)
+
+To upgrade from the heuristic summariser to GPT-powered summaries, set the following env vars:
+
+```
+APP_OPENAI_API_KEY=sk-...
+APP_OPENAI_MODEL=gpt-4o-mini
+APP_OPENAI_MAX_CHARS=12000
+APP_OPENAI_BASE_URL=https://api.openai.com/v1  # or your compatible endpoint
+```
+
+If the LLM call fails (or no key is configured) the worker automatically falls back to the heuristic summariser.
+
 ### Optional: Configure Email Delivery (Mailjet example)
 
 Set the following environment variables if you’d like the notification worker to send real email via Mailjet:

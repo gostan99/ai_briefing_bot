@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from app.services.summariser_worker import _split_sentences, generate_summary_from_transcript
+from app.services.summariser_utils import _split_sentences, generate_summary_from_transcript
 
 
 def test_split_sentences_handles_basic_punctuation():
@@ -23,4 +23,3 @@ def test_generate_summary_returns_key_fields():
 def test_generate_summary_raises_for_empty_transcript():
     with pytest.raises(ValueError):
         generate_summary_from_transcript("\n   \n")
-
