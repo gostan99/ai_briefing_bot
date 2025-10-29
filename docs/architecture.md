@@ -1,105 +1,101 @@
-# AI Briefing Bot – Event-Driven Flow
+# AI Briefing Bot Architecture
 
-## Overview
-Reacts to YouTube upload notifications, a webhook stores new uploads, a worker waits for transcripts to appear, an LLM produces a brief, and an email service delivers the summary.
+This document outlines the end-to-end flow that turns a YouTube upload into a summarised email, plus the core data model and retry strategy.
 
-## Flow Breakdown
-1. **Subscription API**
-   - FastAPI exposes `POST /subscriptions` with payload:
-     ```json
-     {
-       "email": "user@example.com",
-       "channels": ["UC123...", "https://www.youtube.com/@channel"]
-     }
-     ```
-   - Handler normalises channel identifiers (accepts IDs, `@handles`, or feed URLs) and deduplicates the list.
-   - Upsert subscriber record (`subscribers` table) and associated channels (`subscriber_channels`).
-   - For any new channel we are not yet following, issue/refresh a WebSub subscription.
+## 1. High-Level Flow
 
-2. **YouTube Push Notification**
-   - FastAPI exposes `GET/POST /webhooks/youtube`.
-   - GET handles WebSub subscription challenge.
-   - POST parses the new upload payload, extracts `channel_id` + `video_id`.
-   - DB upsert into `channels`; insert/update `videos` with:
-     - `transcript_status = 'pending'`
-     - `retry_count = 0`
-     - `next_retry_at = NOW()`
-     - metadata (title if provided, timestamps, etc.)
+```
+YouTube → WebSub → FastAPI webhook → Postgres (video:pending)
+          ↓
+   Transcript worker (polls videos)
+          ↓
+   Summariser worker (LLM or heuristic)
+          ↓
+   Notification worker (SMTP)
+          ↓
+      Subscriber inbox
+```
 
-3. **Transcript Worker**
-   - Background loop (APScheduler job or standalone worker) selects rows where:
-     - `transcript_status = 'pending'`
-     - `next_retry_at <= NOW()`
-   - For each candidate:
-     - Call `youtube-transcript-api`.
-     - **Success**: store transcript text/language, set `transcript_status = 'ready'`, reset `retry_count`, clear `last_error`.
-     - **Failure**: increment `retry_count`, set `next_retry_at = NOW() + backoff(retry_count)`, record error.
-     - When `retry_count >= MAX_RETRY`, mark `transcript_status = 'failed'` and stop retrying.
+1. **Upload event**: YouTube notifies the app via WebSub; we upsert the channel/video row and mark the transcript job `pending`.
+2. **Transcript fetch**: A background worker calls `youtube-transcript-api`, storing the transcript (or scheduling a retry with exponential backoff).
+3. **Summary generation**: Once a transcript is ready, the summariser worker invokes the OpenAI-compatible API (with fallback to a heuristic summariser) and persists TL;DR + highlights + quote.
+4. **Email dispatch**: The notification worker fan-outs `notification_jobs` for each subscriber, renders a Jinja template, and delivers via SMTP. Retries use the same exponential backoff pattern.
 
-4. **Summariser**
-   - Worker scans for `videos` where `transcript_status = 'ready'` and summary status is `pending`.
-   - Fetch transcript, run LangChain + OpenAI (or chosen LLM) to produce:
-     - `tl_dr` paragraph
-     - Bullet highlights (JSON array/string)
-     - Key quote
-   - Persist into `summaries` table, set `summary_status = 'ready'`, and reset `summary_retry_count`.
-   - On failure, increment `summary_retry_count`, schedule another attempt, and capture the error message. After `summary_retry_count >= APP_SUMMARY_MAX_RETRY`, mark `summary_status = 'failed'` for manual follow-up.
+## 2. Detailed Stages
 
-5. **Notification Dispatcher**
-   - Once a summary is ready, load all subscribers linked to the video’s channel via `subscriber_channels`.
-   - For each subscriber, upsert a `notification_jobs` row with status `pending` and capture the email address plus any preferences (timezone, format, etc.).
-   - Worker dequeues pending jobs, renders the Jinja email template, and sends via SMTP/SendGrid.
-   - Successful sends mark the job `delivered` with `delivered_at = NOW()`; failures increment `retry_count`, store `last_error`, and set `next_retry_at` using exponential backoff.
-   - After `retry_count >= APP_NOTIFY_MAX_RETRY`, mark the job `failed` so it appears in dashboards for manual follow-up without retrying forever.
+### 2.1 Subscription API (`POST /subscriptions`)
+- Normalises channel identifiers (UC IDs, channel URLs, etc.).
+- Upserts the subscriber and the `subscriber_channels` links.
+- Initiates/refreshes WebSub subscriptions for any new channels.
 
-6. **Observability & Recovery**
-   - Structured logging for each stage (video id, channel, attempt counts, durations).
-   - Metrics counters (processed, retries, failures) for quick health checks.
-   - Admin endpoint or CLI script to list rows with `transcript_status='failed'` or stuck retries.
+### 2.2 YouTube Webhook (`/webhooks/youtube`)
+- `GET` handles the WebSub challenge handshake.
+- `POST` parses Atom XML, writes/updates `channels` + `videos`, and seeds transcript state:
+  - `transcript_status='pending'`
+  - `retry_count=0`
+  - `next_retry_at=NOW()`
+  - video metadata (title, description, published timestamp)
 
-## Schema Additions (relative to MVP)
-- **`videos` table**
-  - `transcript_status VARCHAR(16)` (default `'pending'`, values: `pending|ready|failed`).
-  - `retry_count INT DEFAULT 0`.
-  - `next_retry_at TIMESTAMPTZ NULL`.
-  - `last_error TEXT NULL`.
-  - `summary_ready_at TIMESTAMPTZ NULL` (timestamp when LLM succeeded).
-- **`summaries` table**
-  - `summary_status VARCHAR(16)` (values: `pending|ready|failed`).
-  - `summary_retry_count INT DEFAULT 0`.
-  - `summary_last_error TEXT NULL`.
-  - Existing summary payload columns (`tl_dr`, `highlights`, `key_quote`, `created_at`).
-- **`subscribers` table**
-  - `id SERIAL PRIMARY KEY`.
-  - `email VARCHAR(320)` (unique, lower-cased).
-  - `created_at TIMESTAMPTZ NOT NULL`.
-  - Optional metadata (name, last_notified).
-- **`subscriber_channels` table**
-  - `subscriber_id` FK → `subscribers.id`.
-  - `channel_id` FK → `channels.id`.
-  - `created_at TIMESTAMPTZ NOT NULL`.
-  - Composite unique key on `(subscriber_id, channel_id)`.
-- **`notification_jobs` table**
-  - `id SERIAL PRIMARY KEY`.
-  - `video_id` FK → `videos.id`.
-  - `subscriber_id` FK → `subscribers.id`.
-  - `status VARCHAR(16)` (values: `pending|delivered|failed`).
-  - `retry_count INT DEFAULT 0`.
-  - `next_retry_at TIMESTAMPTZ NULL`.
-  - `last_error TEXT NULL`.
-  - `delivered_at TIMESTAMPTZ NULL`.
-  - Composite unique key `(video_id, subscriber_id)` to prevent duplicates.
+### 2.3 Transcript Worker
+- Queries `videos` where `transcript_status='pending'` and `next_retry_at <= NOW()`.
+- Calls `youtube-transcript-api` with rate limiting (`transcript_max_concurrency`, `transcript_min_interval_ms`).
+- On success: stores transcript text/lang, marks `transcript_status='ready'`, clears error fields, sets `fetched_transcript_at`.
+- On failure: increments `retry_count`, schedules the next attempt via `transcript_backoff_minutes * 2^(retry_count-1)`. Once retries exceed `APP_TRANSCRIPT_MAX_RETRY`, the video is marked `failed`.
 
-## Configuration Keys
-- `APP_TRANSCRIPT_MAX_RETRY` (default 6).
-- `APP_TRANSCRIPT_BACKOFF_MINUTES` (base interval for exponential backoff).
-- `APP_NOTIFY_MAX_RETRY` (default 5).
-- `APP_SUMMARY_MAX_RETRY` (default 5).
-- `APP_EMAIL_SMTP_URL`, `APP_EMAIL_FROM`, `APP_EMAIL_TO`.
-- `APP_WEBHOOK_SECRET` for validating requests (optional but recommended behind a proxy).
-- `APP_WEBHOOK_CALLBACK_URL` public URL where YouTube will POST notifications.
+### 2.4 Summariser Worker
+- Finds videos with `transcript_status='ready'` and `summary_status!='ready'`.
+- Picks a summariser function:
+  - If `APP_OPENAI_API_KEY` is present, use `generate_summary_via_openai()` with optional `APP_OPENAI_BASE_URL` (OpenAI-compatible providers).
+  - Otherwise use the built-in sentence-based heuristic.
+- Persists the summary (`tl_dr`, newline-joined highlights, optional `key_quote`) and sets `summary_status='ready'`.
+- If the LLM step fails, logs the error snippet and falls back to the heuristic; repeated failures trigger retry/backoff similar to transcripts.
+- When a summary succeeds, the worker enqueues notification jobs for every subscriber tied to the channel (unique `(video_id, subscriber_id)` constraint prevents dupes).
 
-## Worker Implementation Notes
-- Use FastAPI startup event to spawn async loops, or split into separate processes (API + worker) coordinated via Docker Compose.
-- Backoff example: `delay = base * (2 ** retry_count)` capped at e.g. 6 hours.
-- Protect against duplicate notifications by unique constraint on `(channel_id, youtube_id)`.
+### 2.5 Notification Worker
+- Selects `notification_jobs` with `status='pending'` and `next_retry_at` due (NULL allowed).
+- Ensures the related `video` and `summary` exist; if data is missing it records a failure.
+- Renders the email using Jinja (`app/templates/notification_email.txt.jinja`).
+- Sends via SMTP:
+  - If `APP_EMAIL_SMTP_URL` + `APP_EMAIL_FROM` are set, a real SMTP client is initialised (supports SSL/STARTTLS via URL scheme).
+  - Otherwise a dummy sender logs the payload for local testing.
+- On success: sets `status='delivered'`, clears error fields, records `delivered_at`.
+- On failure: increments `retry_count`, schedules `next_retry_at` using `APP_NOTIFY_BACKOFF_MINUTES`, and stops after `APP_NOTIFY_MAX_RETRY` attempts.
+
+## 3. Data Model Snapshot
+
+| Table | Purpose |
+|-------|---------|
+| `channels` | Canonical YouTube channels (title, external ID, RSS URL, last polled timestamp) |
+| `videos` | Videos per channel, transcript metadata, retry counters, summary timestamps |
+| `summaries` | TL;DR, highlights, quote, retry/error state; one-to-one with `videos` |
+| `subscribers` | Subscriber emails (lowercased, unique) |
+| `subscriber_channels` | Many-to-many join table between subscribers and channels |
+| `notification_jobs` | Pending/delivered/failed email jobs per subscriber/video |
+
+All retry-enabled tables share the same pattern: `status`, `retry_count`, `next_retry_at`, `last_error`, plus a hard cap from environment settings.
+
+## 4. Configuration Overview
+
+Key environment variables (see `.env.example` for the full list):
+
+- Transcript worker: `APP_TRANSCRIPT_MAX_RETRY`, `APP_TRANSCRIPT_BACKOFF_MINUTES`, `APP_TRANSCRIPT_MAX_CONCURRENCY`, `APP_TRANSCRIPT_MIN_INTERVAL_MS`
+- Summariser: `APP_SUMMARY_MAX_RETRY`, `APP_OPENAI_API_KEY`, `APP_OPENAI_MODEL`, `APP_OPENAI_MAX_CHARS`, `APP_OPENAI_BASE_URL`
+- Notifications: `APP_NOTIFY_MAX_RETRY`, `APP_NOTIFY_BACKOFF_MINUTES`, `APP_EMAIL_SMTP_URL`, `APP_EMAIL_FROM`
+- Webhook security: `APP_WEBHOOK_SECRET`, `APP_WEBHOOK_CALLBACK_URL`
+
+## 5. Operational Notes
+
+- **Startup/shutdown**: All workers start from FastAPI’s lifecycle hooks in `app/main.py`; for production you can split them into separate processes (e.g., using a supervisor or container per worker).
+- **Rate limiting**: Transcript fetches use a shared semaphore + monotonic throttle to avoid hammering YouTube; configure via env vars.
+- **Logging**: Workers log failures with video IDs and snippets (LLM responses, SMTP errors) to simplify manual inspection.
+- **Fallback behaviour**: Summaries revert to heuristic generation whenever the LLM errors; notification delivery falls back to dummy sender when SMTP is misconfigured.
+- **Extensibility**: swap the heuristic summariser for other models, plug in HTML templates, or add UI endpoints without touching the core pipeline.
+
+## 6. Future Enhancements
+
+- HTML or multi-part email templates
+- Admin UI/CLI to requeue failed items and view pipeline status
+- Integration tests that publish a synthetic webhook payload and verify email delivery
+- Scaling the workers via separate deployments or task queues when moving beyond portfolio usage
+
+With these components in place, a single YouTube upload now propagates automatically to subscribers with AI-generated highlights and resilient retries at every stage.
