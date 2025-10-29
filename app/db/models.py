@@ -1,4 +1,5 @@
 from datetime import datetime, timezone
+from typing import Optional
 
 from sqlalchemy import BigInteger, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
@@ -49,7 +50,9 @@ class Video(Base):
     )
 
     channel: Mapped[Channel] = relationship(back_populates="videos")
-    summary: Mapped["Summary" | None] = relationship(back_populates="video", cascade="all, delete-orphan")
+    summary: Mapped[Optional["Summary"]] = relationship(
+        back_populates="video", cascade="all, delete-orphan"
+    )
     notification_jobs: Mapped[list["NotificationJob"]] = relationship(
         back_populates="video", cascade="all, delete-orphan"
     )
