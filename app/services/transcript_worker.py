@@ -36,6 +36,7 @@ _max_concurrency = max(settings.transcript_max_concurrency, 1)
 _fetch_semaphore = asyncio.Semaphore(_max_concurrency)
 _rate_lock = asyncio.Lock()
 _last_fetch_monotonic = 0.0
+_LANGUAGE_PREFERENCE = ["en", "en-US", "en-GB"]
 
 
 async def _throttle_requests() -> None:
@@ -56,6 +57,16 @@ async def _throttle_requests() -> None:
         _last_fetch_monotonic = now
 
 
+def _fetch_raw_body(transcript) -> str | None:
+    """Return the raw transcript payload for logging purposes."""
+
+    try:
+        response = transcript._http_client.get(transcript._url)
+        return response.text
+    except Exception:  # pragma: no cover - best-effort diagnostic helper
+        return None
+
+
 def compute_backoff(base_minutes: int, retry_count: int) -> timedelta:
     """Return exponential backoff delay for the given retry count."""
 
@@ -70,13 +81,26 @@ async def fetch_transcript(video_id: str) -> TranscriptResult:
     loop = asyncio.get_running_loop()
 
     def _blocking_fetch() -> TranscriptResult:
+        api = YouTubeTranscriptApi()
         try:
-            segments = YouTubeTranscriptApi.get_transcript(video_id, languages=["en", "en-US", "en-GB"])
-        except TranscriptsDisabled as exc:  # pragma: no cover - depends on YouTube responses
+            transcript = api.list(video_id).find_transcript(_LANGUAGE_PREFERENCE)
+        except TranscriptsDisabled:
             raise
-        except NoTranscriptFound as exc:  # pragma: no cover - depends on YouTube responses
+        except NoTranscriptFound:
             raise
 
+        try:
+            fetched = transcript.fetch()
+        except Exception:
+            raw_body = _fetch_raw_body(transcript)
+            if raw_body is not None:
+                sample = raw_body[:512]
+                logger.warning(
+                    "Transcript fetch failed; sample=%r", sample, extra={"video_id": video_id}
+                )
+            raise
+
+        segments = fetched.to_raw_data()
         if not segments:
             raise NoTranscriptFound("Transcript returned no segments")
 
@@ -182,7 +206,13 @@ async def process_pending_transcripts(
             )
             processed.append(video)
         except Exception as exc:  # pragma: no cover - network dependent
-            logger.exception("Unexpected transcript error", extra={"video_id": video.youtube_id})
+            logger.exception(
+                "Unexpected transcript error",
+                extra={
+                    "video_id": video.youtube_id,
+                    "retry_count": video.retry_count + 1,
+                },
+            )
             _apply_retry(
                 video,
                 exc,
