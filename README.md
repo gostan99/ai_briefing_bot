@@ -14,8 +14,19 @@ Early scaffold for a briefing bot that reacts to YouTube uploads, collects trans
 ## Getting Started
 
 1. Copy `.env.example` to `.env` and update database credentials plus any API/email keys.
-2. Install dependencies with `poetry install` (or `uv sync`).
-3. Create the schema via `python -m app.db.init_db`.
-4. Launch the API locally with `uvicorn app.main:app --reload` to expose `POST /subscriptions` and `/healthz`.
+2. Install dependencies with `uv sync` (installs dev tooling too).
+3. Create the schema via `uv run -- python -m app.db.init_db`.
+4. Launch the API locally with `uv run -- uvicorn app.main:app --reload --port 8000` to expose `POST /subscriptions` and `/healthz`.
+
+### Optional: Public URL via LocalTunnel
+
+If you need a temporary public endpoint for the webhook (e.g., to demo the project), you can use [LocalTunnel](https://github.com/localtunnel/localtunnel):
+
+```bash
+npm install -g localtunnel
+lt --port 8000 --subdomain briefing-bot-demo
+```
+
+The command prints a URL such as `https://briefing-bot-demo.loca.lt`; copy that into `APP_WEBHOOK_CALLBACK_URL` (append `/webhooks/youtube`). Leave out `--subdomain` to let LocalTunnel choose one automatically.
 
 Docker Compose, subscription/webhook handlers, and workers will be added as the event-driven pipeline solidifies. See `docs/architecture.md` for the detailed flow and retry strategy.
