@@ -4,8 +4,20 @@ from __future__ import annotations
 
 import logging
 
-from fastapi import APIRouter, Query, Request, Response, status
+import hashlib
+import hmac
+
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 from fastapi.responses import PlainTextResponse
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.core.config import settings
+from app.db.session import get_session
+from app.services.youtube_notifications import (
+    WebhookParseError,
+    parse_notifications,
+    persist_notifications,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -34,11 +46,68 @@ async def verify_webhook(
     return PlainTextResponse(content=hub_challenge, status_code=status.HTTP_200_OK)
 
 
+def _validate_signature(payload: bytes, signature: str, secret: str) -> bool:
+    try:
+        algo, received = signature.split("=", 1)
+    except ValueError:
+        return False
+
+    algo = algo.lower()
+    if algo == "sha1":
+        digestmod = hashlib.sha1
+    elif algo == "sha256":
+        digestmod = hashlib.sha256
+    else:
+        return False
+
+    expected = hmac.new(secret.encode(), payload, digestmod).hexdigest()
+    return hmac.compare_digest(expected, received)
+
+
 @router.post("/youtube", status_code=status.HTTP_204_NO_CONTENT)
-async def receive_webhook(request: Request) -> Response:
-    """Receive WebSub notifications (payload parsing to be implemented)."""
+async def receive_webhook(
+    request: Request,
+    session: AsyncSession = Depends(get_session),
+) -> Response:
+    """Receive WebSub notifications and persist new uploads."""
 
     payload = await request.body()
     logger.info("Received WebSub notification", extra={"payload_length": len(payload)})
-    # TODO: parse Atom payload, queue transcript fetch job, verify HMAC signature when secret configured.
+
+    secret = settings.webhook_secret
+    if secret:
+        signature = request.headers.get("X-Hub-Signature") or request.headers.get("X-Hub-Signature-256")
+        if not signature or not _validate_signature(payload, signature, secret):
+            logger.warning("Webhook signature validation failed")
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid signature")
+
+    if not payload:
+        logger.info("Empty WebSub payload")
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+    try:
+        notifications = parse_notifications(payload)
+    except WebhookParseError as exc:
+        logger.warning("Invalid WebSub payload", exc_info=exc)
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Malformed payload") from exc
+
+    if not notifications:
+        logger.info("No actionable entries in WebSub payload")
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+    try:
+        videos = await persist_notifications(session, notifications)
+        await session.commit()
+    except Exception as exc:  # noqa: BLE001 - let FastAPI handle HTTP error
+        await session.rollback()
+        logger.exception("Failed to persist WebSub notification")
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Unable to persist notification",
+        ) from exc
+
+    logger.info(
+        "Processed WebSub notification",
+        extra={"video_ids": [video.youtube_id for video in videos], "count": len(videos)},
+    )
     return Response(status_code=status.HTTP_204_NO_CONTENT)
