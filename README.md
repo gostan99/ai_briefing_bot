@@ -14,7 +14,7 @@ Early scaffold for a briefing bot that reacts to YouTube uploads, collects trans
 ## Getting Started
 
 1. Copy `.env.example` to `.env` and update database credentials plus any API/email keys.
-2. Install dependencies with `uv sync` (installs dev tooling too).
+2. Install dependencies with `uv sync --extra dev` (includes dev tooling).
 3. Create the schema via `uv run -- python -m app.db.init_db`.
 4. Launch the API locally with `uv run -- uvicorn app.main:app --reload --port 8000` to expose `POST /subscriptions` and `/healthz`.
 
