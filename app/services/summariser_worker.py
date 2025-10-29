@@ -23,6 +23,12 @@ from app.services.summariser_utils import (
 logger = logging.getLogger(__name__)
 
 
+def _split_field(value: str | None) -> list[str]:
+    if not value:
+        return []
+    return [part.strip() for part in value.splitlines() if part.strip()]
+
+
 def _ensure_summary_record(session: AsyncSession, video: Video) -> Summary:
     summary = video.summary
     if summary is None:
@@ -78,6 +84,7 @@ async def process_pending_summaries(
         select(Video)
         .options(selectinload(Video.summary))
         .where(Video.transcript_status == "ready")
+        .where(Video.metadata_status.in_(["ready", "failed"]))
         .order_by(Video.summary_ready_at.is_(None).desc(), Video.id)
         .limit(batch_size)
     )
@@ -100,9 +107,19 @@ async def process_pending_summaries(
             continue
 
         chosen_generator = generator or _select_generator()
+        metadata = None
+        if video.metadata_status == "ready":
+            metadata = {
+                "tags": _split_field(video.metadata_tags),
+                "hashtags": _split_field(video.metadata_hashtags),
+                "sponsors": _split_field(video.metadata_sponsors),
+                "urls": _split_field(video.metadata_urls),
+                "clean_description": video.metadata_clean_description,
+                "description": video.description,
+            }
 
         try:
-            result = chosen_generator(video.transcript_text)
+            result = chosen_generator(video.transcript_text, metadata)
             _apply_summary_success(video, summary, result)
         except Exception as exc:
             if generator is None and chosen_generator is generate_summary_via_openai:
@@ -229,4 +246,3 @@ async def stop_summariser_worker() -> None:
     """Public entry for FastAPI shutdown."""
 
     await summariser_worker.stop()
-

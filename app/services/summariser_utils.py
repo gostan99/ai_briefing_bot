@@ -32,7 +32,7 @@ def _split_sentences(text: str) -> list[str]:
     return [sentence.strip() for sentence in sentences if sentence.strip()]
 
 
-def generate_summary_from_transcript(transcript: str) -> SummaryResult:
+def generate_summary_from_transcript(transcript: str, metadata: dict | None = None) -> SummaryResult:
     """Heuristic summariser used when no LLM is configured."""
 
     sentences = _split_sentences(transcript)
@@ -61,7 +61,7 @@ def _get_openai_client() -> OpenAI:
     return OpenAI(**kwargs)
 
 
-def generate_summary_via_openai(transcript: str) -> SummaryResult:
+def generate_summary_via_openai(transcript: str, metadata: dict | None = None) -> SummaryResult:
     """Generate a summary using OpenAI Responses API."""
 
     if not settings.openai_api_key:
@@ -72,8 +72,34 @@ def generate_summary_via_openai(transcript: str) -> SummaryResult:
         "Summarise the following transcript."
         " Produce a concise tl_dr under 60 words, a list of 3-5 key highlights,"
         " and a single notable quote (or null if unavailable)."
+        " Return JSON with keys tl_dr (string), highlights (array of strings), key_quote (string or null)."
+        " Do not include text outside the JSON object."
     )
     clipped_transcript = transcript[: settings.openai_max_chars]
+
+    metadata_context = ""
+    if metadata:
+        lines: list[str] = []
+        tags = metadata.get("tags")
+        if tags:
+            tags_str = ", ".join(tags) if isinstance(tags, list) else str(tags)
+            lines.append(f"Tags: {tags_str}")
+        hashtags = metadata.get("hashtags")
+        if hashtags:
+            hashtags_str = ", ".join(hashtags) if isinstance(hashtags, list) else str(hashtags)
+            lines.append(f"Hashtags: {hashtags_str}")
+        sponsors = metadata.get("sponsors")
+        if sponsors:
+            sponsors_str = "; ".join(sponsors) if isinstance(sponsors, list) else str(sponsors)
+            lines.append(f"Sponsor mentions: {sponsors_str}")
+        clean_description = metadata.get("clean_description") or metadata.get("description")
+        if clean_description:
+            description = str(clean_description)
+            if len(description) > 1000:
+                description = description[:1000] + "…"
+            lines.append(f"Description snippet: {description}")
+        if lines:
+            metadata_context = "\n".join(lines)
 
     response = client.responses.create(
         model=settings.openai_model,
@@ -82,10 +108,8 @@ def generate_summary_via_openai(transcript: str) -> SummaryResult:
             {
                 "role": "user",
                 "content": (
-                    f"{prompt}\n\nReturn a JSON object exactly with keys tl_dr (string),"
-                    " highlights (array of strings), key_quote (string or null)."
-                    " Do not include any text outside the JSON.\n\nTranscript:\n"
-                    f"{clipped_transcript}"
+                    f"{prompt}\n\nTranscript:\n{clipped_transcript}"
+                    + (f"\n\nMetadata:\n{metadata_context}" if metadata_context else "")
                 ),
             },
         ],

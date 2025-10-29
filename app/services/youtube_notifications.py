@@ -141,6 +141,10 @@ async def persist_notifications(
                 retry_count=0,
                 next_retry_at=now,
                 last_error=None,
+                metadata_status="pending",
+                metadata_retry_count=0,
+                metadata_next_retry_at=now,
+                metadata_last_error=None,
             )
             session.add(video)
             processed.append(video)
@@ -153,6 +157,8 @@ async def persist_notifications(
                 existing_video.published_at = notification.published_at
             if existing_video.transcript_status == "pending" and existing_video.next_retry_at is None:
                 existing_video.next_retry_at = now
+            if existing_video.metadata_status == "pending" and existing_video.metadata_next_retry_at is None:
+                existing_video.metadata_next_retry_at = now
             processed.append(existing_video)
 
     await session.flush()

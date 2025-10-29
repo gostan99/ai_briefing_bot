@@ -126,6 +126,8 @@ def _apply_success(video: Video, result: TranscriptResult, *, now: datetime) -> 
     video.next_retry_at = None
     video.last_error = None
     video.fetched_transcript_at = now
+    if video.metadata_status == "pending" and video.metadata_next_retry_at is None:
+        video.metadata_next_retry_at = now
 
 
 def _apply_retry(
