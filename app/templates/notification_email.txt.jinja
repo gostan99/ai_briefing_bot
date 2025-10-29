@@ -1,0 +1,12 @@
+{{ summary.tl_dr }}
+
+{% if summary.highlights %}Highlights:
+{% for line in summary.highlights.split('\n') %}- {{ line }}
+{% endfor %}
+{% endif %}
+{% if summary.key_quote %}
+Key quote:
+"{{ summary.key_quote }}"
+{% endif %}
+
+Watch: https://www.youtube.com/watch?v={{ video.youtube_id }}

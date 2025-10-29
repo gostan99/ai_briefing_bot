@@ -14,6 +14,7 @@ class Settings(BaseSettings):
     transcript_min_interval_ms: int = 500
     summary_max_retry: int = 5
     notify_max_retry: int = 5
+    notify_backoff_minutes: int = 5
     email_smtp_url: str | None = None
     email_from: str | None = None
     webhook_secret: str | None = None

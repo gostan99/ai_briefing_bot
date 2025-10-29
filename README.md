@@ -18,6 +18,17 @@ A briefing bot that reacts to YouTube uploads, collects transcripts, generates A
 3. Create the schema via `uv run -- python -m app.db.init_db`.
 4. Launch the API locally with `uv run -- uvicorn app.main:app --reload --port 8000` to expose `POST /subscriptions` and `/healthz`.
 
+### Optional: Configure Email Delivery (Mailjet example)
+
+Set the following environment variables if you’d like the notification worker to send real email via Mailjet:
+
+```
+APP_EMAIL_SMTP_URL=smtp://<api_key>:<secret_key>@in-v3.mailjet.com:587
+APP_EMAIL_FROM=briefing-bot@example.com
+```
+
+Leave `APP_EMAIL_SMTP_URL` blank to keep using the built-in dummy sender (no outbound email).
+
 ### Optional: Public URL via LocalTunnel
 
 If you need a temporary public endpoint for the webhook (e.g., to demo the project), you can use [LocalTunnel](https://github.com/localtunnel/localtunnel):
