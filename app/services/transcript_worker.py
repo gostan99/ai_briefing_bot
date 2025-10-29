@@ -244,7 +244,7 @@ class TranscriptWorker:
 transcript_worker = TranscriptWorker()
 
 
-async def start_transcript_worker() -> None:
+def start_transcript_worker() -> None:
     """Public entry for FastAPI startup hook."""
 
     transcript_worker.start()
