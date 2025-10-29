@@ -32,7 +32,7 @@ def extract_channel_id(raw: str) -> str:
         return identifier
 
     if identifier.startswith("@"):  # TODO: resolve via YouTube Data API
-        raise ChannelResolutionError("Channel handles are not supported yet")
+        raise ChannelResolutionError("Channel handles are not supported yet")  # TODO(@future): support handles
 
     if identifier.startswith("http://") or identifier.startswith("https://"):
         parsed = urlparse(identifier)
