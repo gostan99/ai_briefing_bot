@@ -3,12 +3,16 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+import time
 
 import pytest
+
+pytest_plugins = ("pytest_asyncio",)
 
 from app.db.models import Video
 from app.services.transcript_worker import (
     TranscriptResult,
+    _throttle_requests,
     _apply_permanent_failure,
     _apply_retry,
     _apply_success,
@@ -76,3 +80,22 @@ def test_permanent_failure_marks_failed_immediately():
     assert video.retry_count == 1
     assert video.next_retry_at is None
     assert video.fetched_transcript_at == now
+
+
+@pytest.mark.asyncio
+async def test_throttle_respects_min_interval():
+    from app.core.config import settings
+    from app.services import transcript_worker as worker
+
+    previous_interval = settings.transcript_min_interval_ms
+    previous_last = worker._last_fetch_monotonic
+    try:
+        settings.transcript_min_interval_ms = 100
+        worker._last_fetch_monotonic = time.monotonic()
+        start = time.monotonic()
+        await _throttle_requests()
+        elapsed = time.monotonic() - start
+        assert elapsed >= 0.09
+    finally:
+        settings.transcript_min_interval_ms = previous_interval
+        worker._last_fetch_monotonic = previous_last

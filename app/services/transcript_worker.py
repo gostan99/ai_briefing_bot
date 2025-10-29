@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Awaitable, Callable
@@ -29,6 +30,30 @@ class TranscriptResult:
 
     text: str
     language_code: str | None
+
+
+_max_concurrency = max(settings.transcript_max_concurrency, 1)
+_fetch_semaphore = asyncio.Semaphore(_max_concurrency)
+_rate_lock = asyncio.Lock()
+_last_fetch_monotonic = 0.0
+
+
+async def _throttle_requests() -> None:
+    """Ensure a minimum delay between outbound transcript requests."""
+
+    global _last_fetch_monotonic
+
+    min_interval = max(settings.transcript_min_interval_ms, 0) / 1000.0
+    if min_interval <= 0:
+        return
+
+    async with _rate_lock:
+        now = time.monotonic()
+        sleep_for = (_last_fetch_monotonic + min_interval) - now
+        if sleep_for > 0:
+            await asyncio.sleep(sleep_for)
+            now = time.monotonic()
+        _last_fetch_monotonic = now
 
 
 def compute_backoff(base_minutes: int, retry_count: int) -> timedelta:
@@ -64,7 +89,9 @@ async def fetch_transcript(video_id: str) -> TranscriptResult:
         language = segments[0].get("language_code") or segments[0].get("language")
         return TranscriptResult(text=" ".join(parts), language_code=language)
 
-    return await loop.run_in_executor(None, _blocking_fetch)
+    async with _fetch_semaphore:
+        await _throttle_requests()
+        return await loop.run_in_executor(None, _blocking_fetch)
 
 
 def _apply_success(video: Video, result: TranscriptResult, *, now: datetime) -> None:
