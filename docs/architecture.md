@@ -1,6 +1,6 @@
 # AI Briefing Bot Architecture
 
-This document describes how a YouTube upload flows through the system—from webhook ingestion to the generated summary—plus the retry/backoff strategy and supporting data model.
+This document explains how a YouTube upload flows through the system—from webhook ingestion to the generated summary—along with the retry/backoff strategy and supporting data model.
 
 ## 1. High-Level Flow
 
@@ -18,14 +18,14 @@ YouTube → WebSub → FastAPI webhook → Postgres (video pending)
 
 1. **Upload event**: WebSub notifies us; we upsert the channel/video record and mark the transcript job `pending`.
 2. **Transcript fetch**: The transcript worker calls `youtube-transcript-api`. Captions are stored or retried with exponential backoff.
-3. **Metadata enrichment**: Once captions exist, the metadata stage scrapes the public watch page for tags and the raw description, cleans it (LLM-assisted), and persists tags/hashtags/sponsors/URLs.
-4. **Summary generation**: The summariser worker feeds the transcript + cleaned metadata into the OpenAI-compatible API and stores TL;DR/highlights/quote/topics.
+3. **Metadata enrichment**: Once captions exist, the metadata stage scrapes the public watch page for tags and the raw description, cleans it, and persists tags/hashtags/sponsors/URLs.
+4. **Summary generation**: The summariser worker feeds the transcript plus cleaned metadata into the OpenAI-compatible API and stores TL;DR/highlights/quote/topics.
 
 ## 2. Detailed Stages
 
 ### 2.1 Channel Registry (`/channels`)
 - Normalises channel identifiers (`UC…`, `/channel/…`, `@handles`, etc.); handle lookups require the YouTube Data API via `APP_YOUTUBE_API_KEY`.
-- Persists tracked channels and ensures WebSub subscriptions are registered.
+- Persists tracked channels and ensures WebSub subscriptions are registered via the hub.
 - Removing a channel cascades to associated videos and summaries via foreign-key deletes.
 
 ### 2.2 YouTube Webhook (`/webhooks/youtube`)

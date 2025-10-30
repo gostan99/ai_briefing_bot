@@ -26,9 +26,9 @@ Architectural details and sequence diagrams live in [`docs/architecture.md`](doc
 cp .env.example .env  # edit as needed (DB creds, API keys)
 
 # If you set up the database before metadata support was added,
-# re-run the init script after pulling:
+# re-run the init script after pulling. If you still have legacy
+# subscriber_* tables from older revisions, drop them or recreate the DB:
 #   uv run -- python -m app.db.init_db
-#   # (If you still have legacy subscriber_* tables, drop them or recreate the DB.)
 
 # 2. Install dependencies
 uv sync --extra dev   # or: pip install -e .[dev]
@@ -54,7 +54,7 @@ SET metadata_status = 'pending',
 WHERE metadata_fetched_at IS NULL;
 ```
 
-## React Dashboard
+## React Dashboard (local dev)
 
 ```bash
 cd frontend
@@ -62,7 +62,7 @@ npm install
 npm run dev
 ```
 
-Set `VITE_API_BASE` in a `.env` file inside `frontend/` if your API is not running on http://localhost:8000. The dashboard exposes a channel manager (list/add/remove) backed by `/channels`, polls the `/videos` API, exposes a delete action (`DELETE /videos/{id}`), and you can also prune entries via the CLI helper:
+Set `VITE_API_BASE` in a `.env` file inside `frontend/` if your API is not running on http://localhost:8000. The dashboard surfaces the channel manager (list/add/remove via `/channels`), continuously polls `/videos`, exposes a delete action (`DELETE /videos/{id}`), and you can also prune entries via the CLI helper:
 
 ```bash
 docker compose exec app python -m app.jobs.delete_video <YOUTUBE_ID>
@@ -75,7 +75,7 @@ The API exposes:
 - `POST /webhooks/youtube` – endpoint for YouTube WebSub payloads
 - `GET /healthz` – simple liveness probe
 
-Channel handles (strings starting with `@`) are accepted when `APP_YOUTUBE_API_KEY` is configured; otherwise stick to canonical `UC…` IDs or feed URLs.
+Channel handles (strings starting with `@`) are accepted when `APP_YOUTUBE_API_KEY` is configured; otherwise stick to canonical `UC…` IDs or WebSub feed URLs.
 
 Summaries and metadata are stored in Postgres; email delivery is no longer part of this project. Use the React dashboard (`frontend/`) to monitor the pipeline in real time.
 
@@ -137,8 +137,6 @@ app/
     metadata_worker.py
     summariser_worker.py
     summariser_utils.py  # LLM summary helpers
-    template_renderer.py # Jinja rendering for future use
-  templates/       # (reserved for future UI/email assets)
   tests/           # pytest suite covering workers + parsers
 ```
 frontend/          # React/Vite dashboard
