@@ -12,13 +12,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.core.config import settings
-from app.db.models import NotificationJob, SubscriberChannel, Summary, Video
+from app.db.models import Summary, Video
 from app.db.session import SessionLocal
-from app.services.summariser_utils import (
-    SummaryResult,
-    generate_summary_from_transcript,
-    generate_summary_via_openai,
-)
+from app.services.summariser_utils import SummaryResult, generate_summary_via_openai
 
 logger = logging.getLogger(__name__)
 
@@ -66,12 +62,6 @@ def _apply_summary_failure(summary: Summary, error: Exception) -> None:
         summary.summary_status = "pending"
 
 
-def _select_generator() -> Callable[[str], SummaryResult]:
-    if settings.openai_api_key:
-        return generate_summary_via_openai
-    return generate_summary_from_transcript
-
-
 async def process_pending_summaries(
     session: AsyncSession,
     *,
@@ -106,7 +96,7 @@ async def process_pending_summaries(
             updated.append(summary)
             continue
 
-        chosen_generator = generator or _select_generator()
+        chosen_generator = generator or generate_summary_via_openai
         metadata = None
         if video.metadata_status == "ready":
             metadata = {
@@ -122,70 +112,16 @@ async def process_pending_summaries(
             result = chosen_generator(video.transcript_text, metadata)
             _apply_summary_success(video, summary, result)
         except Exception as exc:
-            if generator is None and chosen_generator is generate_summary_via_openai:
-                logger.exception(
-                    "LLM summary failed, falling back to heuristic",
-                    extra={"video_id": video.youtube_id},
-                )
-                try:
-                    result = generate_summary_from_transcript(video.transcript_text)
-                    _apply_summary_success(video, summary, result)
-                except Exception as fallback_exc:  # pragma: no cover - defensive guard
-                    logger.exception(
-                        "Fallback summary generation failed",
-                        extra={"video_id": video.youtube_id},
-                    )
-                    _apply_summary_failure(summary, fallback_exc)
-            else:
-                logger.exception(
-                    "Summary generation failed",
-                    extra={"video_id": video.youtube_id},
-                )
-                _apply_summary_failure(summary, exc)
+            logger.exception(
+                "Summary generation failed",
+                extra={"video_id": video.youtube_id},
+            )
+            _apply_summary_failure(summary, exc)
 
         updated.append(summary)
 
     await session.flush()
-    await _queue_notification_jobs(session, [video for video in videos if video.summary])
     return updated
-
-
-async def _queue_notification_jobs(session: AsyncSession, videos: list[Video]) -> None:
-    """Create notification jobs for summaries that are ready."""
-
-    for video in videos:
-        summary = video.summary
-        if summary is None or summary.summary_status != "ready":
-            continue
-
-        subscriber_ids = (
-            await session.execute(
-                select(SubscriberChannel.subscriber_id).where(
-                    SubscriberChannel.channel_id == video.channel_id
-                )
-            )
-        ).scalars().all()
-
-        for subscriber_id in subscriber_ids:
-            exists = await session.scalar(
-                select(NotificationJob).where(
-                    NotificationJob.video_id == video.id,
-                    NotificationJob.subscriber_id == subscriber_id,
-                )
-            )
-            if exists:
-                continue
-
-            job = NotificationJob(
-                video_id=video.id,
-                subscriber_id=subscriber_id,
-                status="pending",
-                retry_count=0,
-                next_retry_at=datetime.now(timezone.utc),
-            )
-            session.add(job)
-
-    await session.flush()
 
 
 class SummariserWorker:

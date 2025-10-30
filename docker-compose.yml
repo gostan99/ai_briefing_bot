@@ -9,21 +9,6 @@ services:
       - .env
     environment:
       APP_DATABASE_URL: postgresql+asyncpg://briefing:briefing@postgres:5432/briefing
-      APP_TRANSCRIPT_MAX_RETRY: "6"
-      APP_TRANSCRIPT_BACKOFF_MINUTES: "5"
-      APP_TRANSCRIPT_MAX_CONCURRENCY: "2"
-      APP_TRANSCRIPT_MIN_INTERVAL_MS: "500"
-      APP_SUMMARY_MAX_RETRY: "5"
-      APP_NOTIFY_MAX_RETRY: "5"
-      APP_NOTIFY_BACKOFF_MINUTES: "5"
-      APP_OPENAI_API_KEY: ""
-      APP_OPENAI_MODEL: gpt-4o-mini
-      APP_OPENAI_MAX_CHARS: "12000"
-      APP_OPENAI_BASE_URL: ""
-      APP_EMAIL_SMTP_URL: ""
-      APP_EMAIL_FROM: ""
-      APP_WEBHOOK_SECRET: ""
-      APP_WEBHOOK_CALLBACK_URL: http://localhost:8000/webhooks/youtube
     ports:
       - "8000:8000"
     depends_on:

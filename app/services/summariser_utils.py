@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 import logging
-import re
 from dataclasses import dataclass
 from functools import lru_cache
 
@@ -22,33 +21,6 @@ class SummaryResult:
     tl_dr: str
     highlights: list[str]
     key_quote: str | None
-
-
-def _split_sentences(text: str) -> list[str]:
-    text = text.strip()
-    if not text:
-        return []
-    sentences = re.split(r"(?<=[.!?])\s+", text)
-    return [sentence.strip() for sentence in sentences if sentence.strip()]
-
-
-def generate_summary_from_transcript(transcript: str, metadata: dict | None = None) -> SummaryResult:
-    """Heuristic summariser used when no LLM is configured."""
-
-    sentences = _split_sentences(transcript)
-    if not sentences:
-        raise ValueError("Transcript is empty")
-
-    tl_dr = " ".join(sentences[:2]) if len(sentences) > 1 else sentences[0]
-
-    highlights: list[str] = []
-    for sentence in sentences:
-        if len(highlights) >= 4:
-            break
-        highlights.append(sentence)
-
-    key_quote = max(sentences, key=len)
-    return SummaryResult(tl_dr=tl_dr, highlights=highlights, key_quote=key_quote)
 
 
 @lru_cache
@@ -154,7 +126,5 @@ def generate_summary_via_openai(transcript: str, metadata: dict | None = None) -
 
 __all__ = [
     "SummaryResult",
-    "generate_summary_from_transcript",
     "generate_summary_via_openai",
-    "_split_sentences",
 ]
