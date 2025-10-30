@@ -138,7 +138,7 @@ app/
     summariser_worker.py
     summariser_utils.py  # LLM summary helpers
     template_renderer.py # Jinja rendering for future use
-  templates/       # notification_email.txt.jinja (plain text template)
+  templates/       # (reserved for future UI/email assets)
   tests/           # pytest suite covering workers + parsers
 ```
 frontend/          # React/Vite dashboard
@@ -154,7 +154,6 @@ frontend/          # React/Vite dashboard
 
 ## Next Ideas (Nice-to-haves)
 
-- HTML email template with responsive styling
 - Integration smoke test that simulates a full upload → summary run
 - Admin endpoints for retrying failed transcript/summary jobs
 - UI for richer channel analytics and summary browsing

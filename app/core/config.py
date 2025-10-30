@@ -18,13 +18,9 @@ class Settings(BaseSettings):
     transcript_max_concurrency: int = 2
     transcript_min_interval_ms: int = 500
     summary_max_retry: int = 5
-    notify_max_retry: int = 5
-    notify_backoff_minutes: int = 5
     metadata_max_retry: int = 4
     metadata_backoff_minutes: int = 5
     dashboard_cors_origins: list[str] = ["http://localhost:5173"]
-    email_smtp_url: str | None = None
-    email_from: str | None = None
     webhook_secret: str | None = None
     webhook_callback_url: str = "http://localhost:8000/webhooks/youtube"
 
