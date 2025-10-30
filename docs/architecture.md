@@ -50,8 +50,8 @@ YouTube → WebSub → FastAPI webhook → Postgres (video pending)
 
 ### 2.5 Summariser Worker
 - Selects videos with `transcript_status='ready'` and `summary_status!='ready'`.
-- Calls `generate_summary_via_openai()` (respecting `APP_OPENAI_BASE_URL` for OpenAI-compatible endpoints) using transcript + cleaned description/tags.
-- **Success**: persists the summary (`tl_dr`, newline-joined highlights, `key_quote`, optional `topics`), marks `summary_status='ready'`, enqueues notification jobs for each subscribed user.
+- Calls `generate_summary_via_openai()` (respecting `APP_OPENAI_BASE_URL` for OpenAI-compatible endpoints) with the transcript plus any cleaned metadata (tags, hashtags, sponsors, URLs, descriptions).
+- **Success**: persists the summary (`tl_dr`, newline-joined highlights, `key_quote`, optional `topics`), clears retry counters, and marks `summary_status='ready'`.
 - **Failure**: logs the LLM snippet, retries with backoff, and marks the summary `failed` after `APP_SUMMARY_MAX_RETRY` attempts for manual follow-up.
 
 ## 3. Data Model Snapshot
@@ -82,6 +82,7 @@ Retry-enabled tables share the schema pattern: `*_status`, `*_retry_count`, `*_n
 - Logs include video IDs and trimmed error snippets (LLM responses, scraping results, transcript errors) for manual replay/debugging.
 - Summaries rely on the LLM; repeated failures are logged and retried until the job is marked `failed` for manual follow-up.
 - Metadata cleaning removes timestamps, extracts sponsors/hashtags/URLs, and stores structured JSON for the summariser prompt.
+- The current pipeline stops once summaries are written; notification/email delivery is intentionally out of scope for this demo build.
 
 ## 6. Future Enhancements
 

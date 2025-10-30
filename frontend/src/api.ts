@@ -14,3 +14,7 @@ export async function fetchVideoDetail(videoId: string): Promise<VideoStatus> {
   const response = await axios.get<VideoStatus>(`${API_BASE}/videos/${videoId}`);
   return response.data;
 }
+
+export async function deleteVideo(videoId: string): Promise<void> {
+  await axios.delete(`${API_BASE}/videos/${videoId}`);
+}

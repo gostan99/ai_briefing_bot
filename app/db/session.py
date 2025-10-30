@@ -20,3 +20,10 @@ async def get_session() -> AsyncIterator[AsyncSession]:
 
     async with SessionLocal() as session:
         yield session
+
+
+async def session_from_pool() -> AsyncIterator[AsyncSession]:
+    """Utility context manager for scripts."""
+
+    async with SessionLocal() as session:
+        yield session

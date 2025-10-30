@@ -40,6 +40,18 @@ uv run -- python -m app.db.init_db
 
 # 5. Run the API + workers (workers start on FastAPI startup)
 uv run -- uvicorn app.main:app --reload --port 8000
+```
+
+If you already had video rows before metadata support existed, requeue them once:
+
+```
+UPDATE videos
+SET metadata_status = 'pending',
+    metadata_retry_count = 0,
+    metadata_next_retry_at = NOW(),
+    metadata_last_error = NULL
+WHERE metadata_fetched_at IS NULL;
+```
 
 ## React Dashboard
 
@@ -49,14 +61,10 @@ npm install
 npm run dev
 ```
 
-Set `VITE_API_BASE` in a `.env` file inside `frontend/` if your API is not running on http://localhost:8000.
+Set `VITE_API_BASE` in a `.env` file inside `frontend/` if your API is not running on http://localhost:8000. The dashboard polls the `/videos` API, exposes a delete action (`DELETE /videos/{id}`), and you can also prune entries via the CLI helper:
 
-
-# If you already had video rows before metadata support existed, requeue them once:
-#   UPDATE videos
-#   SET metadata_status='pending', metadata_retry_count=0,
-#       metadata_next_retry_at=NOW(), metadata_last_error=NULL
-#   WHERE metadata_fetched_at IS NULL;
+```bash
+docker compose exec app python -m app.jobs.delete_video <YOUTUBE_ID>
 ```
 
 The API exposes:
@@ -89,7 +97,7 @@ Stop the stack with `docker compose down` (add `--volumes` to drop the persisten
 | Metadata worker | `APP_METADATA_MAX_RETRY`, `APP_METADATA_BACKOFF_MINUTES` | Retry/backoff for scraping & cleaning |
 | Summaries | `APP_SUMMARY_MAX_RETRY` | Max LLM retries before marking `failed` |
 | LLM (required for summaries) | `APP_OPENAI_API_KEY`, `APP_OPENAI_MODEL`, `APP_OPENAI_MAX_CHARS`, `APP_OPENAI_BASE_URL` | Provide an OpenAI-compatible key; summaries fail after retries if unavailable |
-| Dashboard CORS | `APP_DASHBOARD_CORS_ORIGINS` | Comma-separated list of origins allowed to call the API |
+| Dashboard CORS | `APP_DASHBOARD_CORS_ORIGINS` | JSON array of origins (e.g. `["http://localhost:5173"]`) |
 | Webhooks | `APP_WEBHOOK_SECRET`, `APP_WEBHOOK_CALLBACK_URL` | Secret validates inbound WebSub signatures |
 
 ### LLM Summaries (OpenAI-compatible)
@@ -102,15 +110,6 @@ APP_OPENAI_BASE_URL=https://api.openai.com/v1  # override if using a compatible 
 ```
 
 The worker relies on the LLM. If the provider returns an error, the job logs a snippet and retries until `APP_SUMMARY_MAX_RETRY` is exceeded, then marks the summary `failed`.
-
-### Email Delivery (Mailjet example)
-
-```
-APP_EMAIL_SMTP_URL=smtp://<api_key>:<secret_key>@in-v3.mailjet.com:587
-APP_EMAIL_FROM=briefing-bot@example.com
-```
-
-If `APP_EMAIL_SMTP_URL` is blank, the notification worker uses a dummy sender that only logs payloads—perfect for local testing.
 
 ### Exposing a Public Webhook (Optional)
 
@@ -145,7 +144,7 @@ frontend/          # React/Vite dashboard
 - The workers run inside the FastAPI app in this repo; for production you’d probably split them into dedicated processes or Celery/Arq jobs but the logic is isolated in `app/services/*_worker.py`.
 - `python -m pytest` exercises parser logic, retry helpers, and template rendering. Add integration tests when you introduce real I/O.
 - Database state is safe to inspect directly (e.g. TablePlus). `videos.transcript_status` and `summaries.summary_status` tell you where each item sits in the pipeline.
-- Logs surface LLM failures, email retries, and transcript fetch issues with video IDs so you can replay or inspect manually.
+- Logs surface LLM failures, metadata scrape errors, and transcript fetch issues with video IDs so you can replay or inspect manually.
 
 ## Next Ideas (Nice-to-haves)
 

@@ -86,3 +86,14 @@ async def get_video(video_id: str, session: AsyncSession = Depends(get_session))
         metadata_clean_description=video.metadata_clean_description,
         summary_highlights_raw=video.summary.highlights if video.summary else None,
     )
+
+
+@router.delete("/{video_id}", status_code=204)
+async def delete_video_record(video_id: str, session: AsyncSession = Depends(get_session)) -> None:
+    stmt = select(Video).where(Video.youtube_id == video_id)
+    video = (await session.execute(stmt)).scalar_one_or_none()
+    if not video:
+        raise HTTPException(status_code=404, detail="Video not found")
+
+    await session.delete(video)
+    await session.commit()

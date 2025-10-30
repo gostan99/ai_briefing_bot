@@ -7,13 +7,15 @@ import {
 } from "@tanstack/react-table";
 import dayjs from "dayjs";
 import { VideoStatus } from "../types";
+import { DeleteButton } from "./DeleteButton";
 
 interface VideoTableProps {
   videos: VideoStatus[];
   onSelect: (video: VideoStatus) => void;
+  onDelete: (videoId: string) => Promise<void>;
 }
 
-export function VideoTable({ videos, onSelect }: VideoTableProps) {
+export function VideoTable({ videos, onSelect, onDelete }: VideoTableProps) {
   const columns = useMemo<ColumnDef<VideoStatus>[]>(
     () => [
       {
@@ -45,6 +47,13 @@ export function VideoTable({ videos, onSelect }: VideoTableProps) {
         header: "Created",
         accessorKey: "created_at",
         cell: (info) => dayjs(info.getValue() as string).format("YYYY-MM-DD HH:mm"),
+      },
+      {
+        header: "",
+        accessorKey: "video_id",
+        cell: (info) => (
+          <DeleteButton videoId={info.getValue() as string} onDelete={onDelete} />
+        ),
       },
     ],
     []

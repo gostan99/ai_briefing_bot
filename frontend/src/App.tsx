@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import dayjs from "dayjs";
-import { fetchVideos } from "./api";
+import { deleteVideo as deleteVideoApi, fetchVideoDetail, fetchVideos } from "./api";
 import { VideoStatus } from "./types";
 import { VideoTable } from "./components/VideoTable";
 import { VideoDetail } from "./components/VideoDetail";
@@ -36,10 +36,31 @@ export default function App() {
     return () => clearInterval(interval);
   }, []);
 
+  const handleDelete = async (videoId: string) => {
+    try {
+      await deleteVideoApi(videoId);
+      setVideos((prev) => prev.filter((video) => video.video_id !== videoId));
+      setSelectedVideo(null);
+    } catch (err) {
+      console.error(err);
+      alert("Failed to delete video. Check server logs.");
+    }
+  };
+
   const filtered = useMemo(() => {
     if (filter === "all") return videos;
     return videos.filter((video) => video.summary.status.toLowerCase() === filter);
   }, [videos, filter]);
+
+  const handleSelect = async (video: VideoStatus) => {
+    setSelectedVideo(video);
+    try {
+      const detail = await fetchVideoDetail(video.video_id);
+      setSelectedVideo(detail);
+    } catch (err) {
+      console.error(err);
+    }
+  };
 
   return (
     <div className="app">
@@ -69,8 +90,8 @@ export default function App() {
         {loading && <span className="muted">Refreshing…</span>}
       </section>
 
-      <VideoTable videos={filtered} onSelect={setSelectedVideo} />
-      <VideoDetail video={selectedVideo} onClose={() => setSelectedVideo(null)} />
+      <VideoTable videos={filtered} onSelect={handleSelect} onDelete={handleDelete} />
+      <VideoDetail video={selectedVideo} onClose={() => setSelectedVideo(null)} onDelete={handleDelete} />
     </div>
   );
 }

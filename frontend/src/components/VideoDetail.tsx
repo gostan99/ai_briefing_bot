@@ -1,12 +1,14 @@
 import dayjs from "dayjs";
 import { VideoStatus } from "../types";
+import { DeleteButton } from "./DeleteButton";
 
 interface Props {
   video: VideoStatus | null;
   onClose: () => void;
+  onDelete: (videoId: string) => Promise<void>;
 }
 
-export function VideoDetail({ video, onClose }: Props) {
+export function VideoDetail({ video, onClose, onDelete }: Props) {
   if (!video) return null;
 
   return (
@@ -14,9 +16,12 @@ export function VideoDetail({ video, onClose }: Props) {
       <div className="detail-card" onClick={(e) => e.stopPropagation()}>
         <div className="detail-header">
           <h2>{video.title}</h2>
-          <button onClick={onClose} className="close-button">
-            ×
-          </button>
+          <div className="header-actions">
+            <DeleteButton videoId={video.video_id} onDelete={onDelete} />
+            <button onClick={onClose} className="close-button">
+              ×
+            </button>
+          </div>
         </div>
         <div className="detail-meta">
           <div><strong>Channel:</strong> {video.channel ?? "Unknown"}</div>
