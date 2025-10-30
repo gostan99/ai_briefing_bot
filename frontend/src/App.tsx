@@ -4,6 +4,7 @@ import { deleteVideo as deleteVideoApi, fetchVideoDetail, fetchVideos } from "./
 import { VideoStatus } from "./types";
 import { VideoTable } from "./components/VideoTable";
 import { VideoDetail } from "./components/VideoDetail";
+import { ChannelManager } from "./components/ChannelManager";
 
 const STATUS_FILTERS = ["all", "pending", "ready", "failed"] as const;
 
@@ -70,6 +71,8 @@ export default function App() {
           Monitoring transcript, metadata, and summary stages. Last refresh: {dayjs().format("HH:mm:ss")}.
         </p>
       </header>
+
+      <ChannelManager />
 
       <section className="controls">
         <div className="filter-group">

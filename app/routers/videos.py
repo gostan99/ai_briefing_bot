@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
@@ -88,8 +88,8 @@ async def get_video(video_id: str, session: AsyncSession = Depends(get_session))
     )
 
 
-@router.delete("/{video_id}", status_code=204)
-async def delete_video_record(video_id: str, session: AsyncSession = Depends(get_session)) -> None:
+@router.delete("/{video_id}", status_code=status.HTTP_204_NO_CONTENT, response_class=Response)
+async def delete_video_record(video_id: str, session: AsyncSession = Depends(get_session)) -> Response:
     stmt = select(Video).where(Video.youtube_id == video_id)
     video = (await session.execute(stmt)).scalar_one_or_none()
     if not video:
@@ -97,3 +97,5 @@ async def delete_video_record(video_id: str, session: AsyncSession = Depends(get
 
     await session.delete(video)
     await session.commit()
+
+    return Response(status_code=status.HTTP_204_NO_CONTENT)

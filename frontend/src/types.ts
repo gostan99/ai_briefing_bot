@@ -33,3 +33,9 @@ export interface VideoStatus {
   metadata_clean_description?: string | null;
   summary_highlights_raw?: string | null;
 }
+
+export interface ChannelInfo {
+  external_id: string;
+  title: string;
+  rss_url?: string | null;
+}

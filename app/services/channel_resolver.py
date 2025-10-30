@@ -5,11 +5,53 @@ from __future__ import annotations
 import re
 from urllib.parse import parse_qs, urlparse
 
+import httpx
+
+from app.core.config import settings
+
 CHANNEL_ID_REGEX = re.compile(r"^UC[0-9A-Za-z_-]{22}$")
+YOUTUBE_API_BASE = "https://www.googleapis.com/youtube/v3"
 
 
 class ChannelResolutionError(ValueError):
     """Raised when a channel identifier cannot be normalised."""
+
+
+def _fetch_channel_id_for_handle(handle: str) -> str:
+    """Resolve a YouTube `@handle` into a canonical channel ID via the Data API."""
+
+    api_key = settings.youtube_api_key
+    if not api_key:
+        raise ChannelResolutionError("Channel handle resolution requires APP_YOUTUBE_API_KEY")
+
+    normalised_handle = handle.lstrip("@").strip()
+    if not normalised_handle:
+        raise ChannelResolutionError("Invalid YouTube channel handle")
+
+    url = f"{YOUTUBE_API_BASE}/channels"
+    params = {
+        "part": "id",
+        "forHandle": normalised_handle,
+        "key": api_key,
+    }
+
+    try:
+        response = httpx.get(url, params=params, timeout=10)
+        response.raise_for_status()
+    except httpx.HTTPError as exc:
+        raise ChannelResolutionError("Unable to contact YouTube Data API") from exc
+
+    try:
+        payload = response.json()
+    except ValueError as exc:  # pragma: no cover - defensive for invalid JSON
+        raise ChannelResolutionError("Invalid response from YouTube Data API") from exc
+
+    for item in payload.get("items", []):
+        channel_id = item.get("id")
+        if channel_id and CHANNEL_ID_REGEX.match(channel_id):
+            return channel_id
+
+    raise ChannelResolutionError("Channel handle not found")
 
 
 def extract_channel_id(raw: str) -> str:
@@ -19,9 +61,8 @@ def extract_channel_id(raw: str) -> str:
       * Raw channel IDs (starting with UC)
       * YouTube feed URLs containing `channel_id`
       * Standard channel URLs (`/channel/UC...`)
+      * Channel handles (`@name`) via the YouTube Data API (requires APP_YOUTUBE_API_KEY)
 
-    Channel handles (`@name`) and custom vanity URLs require a Data API lookup and
-    are not handled yet; callers should surface a validation error to the user.
     """
 
     identifier = raw.strip()
@@ -31,8 +72,8 @@ def extract_channel_id(raw: str) -> str:
     if CHANNEL_ID_REGEX.match(identifier):
         return identifier
 
-    if identifier.startswith("@"):  # TODO: resolve via YouTube Data API
-        raise ChannelResolutionError("Channel handles are not supported yet")  # TODO(@future): support handles
+    if identifier.startswith("@"):
+        return _fetch_channel_id_for_handle(identifier)
 
     if identifier.startswith("http://") or identifier.startswith("https://"):
         parsed = urlparse(identifier)

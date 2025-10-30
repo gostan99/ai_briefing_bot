@@ -23,10 +23,10 @@ YouTube → WebSub → FastAPI webhook → Postgres (video pending)
 
 ## 2. Detailed Stages
 
-### 2.1 Subscription API (`POST /subscriptions`)
-- Normalises channel identifiers (`UC…`, `/channel/…`, `@handles`, etc.).
-- Upserts the subscriber + `subscriber_channels` links.
-- Subscribes to WebSub for any new channels we are not already following.
+### 2.1 Channel Registry (`/channels`)
+- Normalises channel identifiers (`UC…`, `/channel/…`, `@handles`, etc.); handle lookups require the YouTube Data API via `APP_YOUTUBE_API_KEY`.
+- Persists tracked channels and ensures WebSub subscriptions are registered.
+- Removing a channel cascades to associated videos and summaries via foreign-key deletes.
 
 ### 2.2 YouTube Webhook (`/webhooks/youtube`)
 - `GET` handles the WebSub challenge handshake.
@@ -61,8 +61,6 @@ YouTube → WebSub → FastAPI webhook → Postgres (video pending)
 | `channels` | Canonical YouTube channels (title, external ID, RSS URL, last polled timestamp) |
 | `videos` | Video metadata, transcript status, metadata enrichment fields, summary timestamp |
 | `summaries` | TL;DR, highlights, quote, topics, retry/error state (1:1 with `videos`) |
-| `subscribers` | Subscriber emails (lowercased, unique) |
-| `subscriber_channels` | Many-to-many link between subscribers and channels |
 
 Retry-enabled tables share the schema pattern: `*_status`, `*_retry_count`, `*_next_retry_at`, `*_last_error`, guided by environment caps.
 
@@ -88,7 +86,7 @@ Retry-enabled tables share the schema pattern: `*_status`, `*_retry_count`, `*_n
 
 - Admin UI/CLI to requeue failed transcript/metadata/summary jobs.
 - Integration smoke tests that push synthetic webhook payloads and verify summary generation end-to-end.
-- Advanced analytics: dashboard for tag/topic frequency, channel performance, subscriber engagement.
+- Advanced analytics: dashboard for tag/topic frequency and channel performance.
 - External metadata providers (e.g., official YouTube Data API) to replace HTML scraping if quota allows.
 
 With this architecture, each new YouTube upload automatically progresses through transcript capture, metadata enrichment, and AI-generated summarisation—complete with retry/backoff safety nets at every stage.

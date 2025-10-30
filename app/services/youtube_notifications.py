@@ -12,7 +12,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models import Channel, Video
-from app.services.subscription_service import get_or_create_channel
+from app.services.channel_registry import ensure_channel
 
 logger = logging.getLogger(__name__)
 
@@ -118,7 +118,7 @@ async def persist_notifications(
     now = datetime.now(timezone.utc)
 
     for notification in notifications:
-        channel = await get_or_create_channel(session, notification.channel_id)
+        channel = await ensure_channel(session, channel_id=notification.channel_id)
 
         if notification.channel_title and channel.title != notification.channel_title:
             channel.title = notification.channel_title

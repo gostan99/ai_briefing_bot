@@ -40,6 +40,87 @@ header h1 {
   margin-bottom: 1rem;
 }
 
+.channel-card {
+  background: #fff;
+  border-radius: 12px;
+  padding: 1.25rem;
+  margin-bottom: 1.5rem;
+  box-shadow: 0 12px 30px rgba(30, 30, 60, 0.08);
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.channel-card h2 {
+  margin: 0;
+  font-size: 1.2rem;
+}
+
+.channel-form {
+  display: grid;
+  grid-template-columns: minmax(180px, 220px) minmax(180px, 1fr) auto;
+  gap: 0.75rem;
+  align-items: center;
+}
+
+.channel-form input {
+  padding: 0.5rem 0.75rem;
+  border-radius: 8px;
+  border: 1px solid #cbd5f5;
+  font-size: 0.95rem;
+}
+
+.channel-form button {
+  padding: 0.5rem 1rem;
+  border-radius: 8px;
+  border: none;
+  background: linear-gradient(90deg, #1e3a8a, #2563eb);
+  color: #fff;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.channel-form button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.info {
+  color: #2563eb;
+  font-weight: 500;
+}
+
+.channel-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.channel-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.35rem 0.6rem;
+  border-radius: 999px;
+  background: #eef2ff;
+  color: #1e3a8a;
+  font-size: 0.8rem;
+}
+
+.channel-pill button {
+  border: none;
+  background: transparent;
+  color: inherit;
+  font-size: 1rem;
+  cursor: pointer;
+  line-height: 1;
+}
+
+.channel-pill button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 .filter-group {
   display: flex;
   align-items: center;

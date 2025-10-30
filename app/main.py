@@ -6,7 +6,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.config import settings
-from app.routers import subscriptions, webhooks, videos
+from app.routers import channels, webhooks, videos
 from app.services.metadata_worker import start_metadata_worker, stop_metadata_worker
 from app.services.summariser_worker import start_summariser_worker, stop_summariser_worker
 from app.services.transcript_worker import start_transcript_worker, stop_transcript_worker
@@ -23,7 +23,7 @@ def create_app() -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
-    app.include_router(subscriptions.router)
+    app.include_router(channels.router)
     app.include_router(webhooks.router)
     app.include_router(videos.router)
 
