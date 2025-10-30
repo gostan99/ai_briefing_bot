@@ -11,6 +11,7 @@ services:
       APP_DATABASE_URL: postgresql+asyncpg://briefing:briefing@postgres:5432/briefing
     ports:
       - "8000:8000"
+      - "5173:8000"
     depends_on:
       postgres:
         condition: service_healthy

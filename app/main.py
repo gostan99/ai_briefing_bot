@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 
 from app.core.config import settings
 from app.routers import channels, webhooks, videos
@@ -26,6 +27,9 @@ def create_app() -> FastAPI:
     app.include_router(channels.router)
     app.include_router(webhooks.router)
     app.include_router(videos.router)
+
+    # Serve built frontend assets when present (Docker image ships them)
+    app.mount("/dashboard", StaticFiles(directory="static", html=True), name="dashboard")
 
     @app.on_event("startup")
     async def _startup() -> None:
